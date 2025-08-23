@@ -1,0 +1,7 @@
+[project]
+name = "options-data-loader"
+version = "0.1.0"
+dependencies = ["pandas", "python-dotenv", "ivolatility", "pyarrow"]
+
+[project.scripts]
+ivol-fetch = "src.fetch_ivol_by_list:main"

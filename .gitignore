@@ -1,0 +1,29 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# data outside (just in case)
+data/
+*.parquet
+*.arrow
+*.feather
+*.duckdb
+*.sqlite
+*.log
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+data/
+*.parquet
+*.arrow
+*.feather
+*.duckdb
+*.sqlite
+*.log
+.env
+__pycache__/
+.DS_Store
