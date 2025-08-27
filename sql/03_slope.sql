@@ -1,26 +1,28 @@
-#!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")/.."
-
-# Load .env into shell so $DATA_DIR is available for envsubst
-set -a; [ -f .env ] && source .env; set +a
-
-DATA_DIR="${IVOL_DATA_DIR:-$HOME/ivoldata}"
-mkdir -p "$DATA_DIR/curated"
-
-# Optional year param: ./scripts/build_curves.sh 2020
-YEAR="${1:-}"
-if [ -n "$YEAR" ]; then
-  YEAR_FILTER="EXTRACT(YEAR FROM c_date) = ${YEAR}"
-  YEAR_SUFFIX="_${YEAR}"
-else
-  YEAR_FILTER="1=1"
-  YEAR_SUFFIX=""
-fi
-
-export DATA_DIR YEAR_FILTER YEAR_SUFFIX
-
-for f in sql/01_pairs.sql sql/02_atm.sql sql/03_slope.sql sql/04_curve_header.sql; do
-  echo ">>> running $f"
-  envsubst < "$f" | duckdb
-done
+PRAGMA threads=8;
+COPY (
+WITH P AS (SELECT * FROM read_parquet('$IVOL_DATA_DIR/curated/pairs${YEAR_SUFFIX}.parquet')),
+A AS (SELECT * FROM read_parquet('$IVOL_DATA_DIR/curated/atm${YEAR_SUFFIX}.parquet')),
+J AS (
+  SELECT
+    P.stocks_id, P.c_date, P.expiration_date, P.tau,
+    (10.0 / SQRT(NULLIF(P.tau,1e-12))) * P.x     AS X,
+    (P.ivol_mid - A.iv_atm)                       AS Y,
+    CASE WHEN P.half_spread_norm IS NULL OR P.half_spread_norm <= 0
+         THEN 1.0
+         ELSE 1.0 / (P.half_spread_norm*P.half_spread_norm + 1e-6)
+    END AS w
+  FROM P JOIN A USING (stocks_id, c_date, expiration_date)
+  WHERE ABS(P.x) <= 0.3
+),
+agg AS (
+  SELECT
+    stocks_id, c_date, expiration_date,
+    SUM(w) AS sw, SUM(w*X) AS sx, SUM(w*Y) AS sy, SUM(w*X*X) AS sxx, SUM(w*X*Y) AS sxy
+  FROM J GROUP BY 1,2,3
+)
+SELECT
+  stocks_id, c_date, expiration_date,
+  (sxy - sx*sy/sw) / NULLIF((sxx - (sx*sx)/sw),0) AS slope
+FROM agg
+) TO '$IVOL_DATA_DIR/curated/smile_slopei${YEAR_SUFFIX}.parquet'
+(FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 128000000);

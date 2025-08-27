@@ -1,7 +1,7 @@
 PRAGMA threads=8;
 
 COPY (
-WITH P AS (SELECT * FROM read_parquet('$IVOL_DATA_DIR/curated/pairs.parquet')),
+WITH P AS (SELECT * FROM read_parquet('${DATA_DIR}/curated/pairs${YEAR_SUFFIX}.parquet')),
 ranked AS (
   SELECT *,
          CASE WHEN K <= S THEN ROW_NUMBER() OVER (
