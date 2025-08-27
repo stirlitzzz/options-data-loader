@@ -11,7 +11,7 @@ mkdir -p "$DATA_DIR/curated"
 # Optional year param: ./scripts/build_curves.sh 2020
 YEAR="${1:-}"
 if [ -n "$YEAR" ]; then
-  YEAR_FILTER="EXTRACT(YEAR FROM c_date) = ${YEAR}"
+  YEAR_FILTER="year(CAST(c_date AS DATE)) = ${YEAR}"
   YEAR_SUFFIX="_${YEAR}"
 else
   YEAR_FILTER="1=1"
