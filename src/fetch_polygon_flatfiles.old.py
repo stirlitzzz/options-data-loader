@@ -12,9 +12,6 @@ from botocore.config import Config
 import pandas as pd
 from dotenv import load_dotenv
 import pandas_market_calendars as mcal
-import pyarrow as pa
-import pyarrow.parquet as pq
-import gc
 
 # --------- helpers ---------
 
@@ -72,61 +69,9 @@ def save_parquet(df: pd.DataFrame, outdir: Path, date_str: str) -> Path:
 
 
 # --------- core ---------
-def fetch_one_day(s3, date_str: str, tickers: set[str], outdir: Path, keep_cols=None):
-    bucket, key = key_for(date_str)
-    try:
-        obj = s3.get_object(Bucket=bucket, Key=key)
-        raw = obj["Body"].read()
-    except s3.exceptions.NoSuchKey:  # type: ignore[attr-defined]
-        return date_str, "MISSING"
-    except Exception as e:
-        return date_str, f"ERROR:{e}"
-
-    # stream gzip → chunks
-    rows_written = 0
-    out = outdir / f"{date_str}_spx_1m.parquet"
-    writer = None
-
-    try:
-        with gzip.GzipFile(fileobj=BytesIO(raw)) as gz:
-            reader = pd.read_csv(
-                gz,
-                usecols=keep_cols,  # e.g. ["ticker","t","o","h","l","c","v","n","vw"]
-                chunksize=200_000,  # tune down if still tight on RAM
-            )
-            for chunk in reader:
-                if "ticker" not in chunk.columns:
-                    return date_str, "ERROR:no_ticker_col"
-                chunk["ticker"] = chunk["ticker"].astype(str).str.upper()
-                chunk = chunk[chunk["ticker"].isin(tickers)]
-                if chunk.empty:
-                    continue
-                # (optional) add ts_utc from 't' once you need it:
-                # if "t" in chunk.columns:
-                #     chunk["ts_utc"] = pd.to_datetime(chunk["t"], unit="ms", utc=True)
-
-                table = pa.Table.from_pandas(chunk, preserve_index=False)
-                if writer is None:
-                    writer = pq.ParquetWriter(out, table.schema, compression="zstd")
-                writer.write_table(table)
-                rows_written += len(chunk)
-                del chunk, table
-                gc.collect()
-    finally:
-        if writer is not None:
-            writer.close()
-
-    if rows_written == 0:
-        # no matches; remove empty file if created
-        try:
-            out.unlink(missing_ok=True)
-        except Exception:
-            pass
-        return date_str, "EMPTY"
-    return date_str, f"OK:{rows_written}->{out.name}"
 
 
-def fetch_one_day_old(
+def fetch_one_day(
     s3, date_str: str, tickers: set[str], outdir: Path, keep_cols=None
 ) -> tuple[str, str]:
     """Returns (date_str, status) where status is 'OK', 'EMPTY', 'MISSING', or 'ERROR:<msg>'."""
