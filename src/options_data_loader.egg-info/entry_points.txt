@@ -1,0 +1,3 @@
+[console_scripts]
+ivol-fetch = fetch_ivol_by_list:main
+poly-fetch = fetch_polygon_flatfiles:main

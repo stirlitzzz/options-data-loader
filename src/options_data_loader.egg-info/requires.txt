@@ -1,0 +1,14 @@
+pandas
+ivolatility
+python-dotenv
+pyarrow
+
+[dev]
+black
+ruff
+pre-commit
+
+[polygon]
+boto3
+pandas_market_calendars
+tqdm

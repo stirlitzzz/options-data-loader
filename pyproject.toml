@@ -9,9 +9,16 @@ version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = ["pandas", "ivolatility", "python-dotenv", "pyarrow"]
 
+# Optional extras you install as:  pip install -e ".[polygon]"
+
+[project.optional-dependencies]
+polygon = ["boto3", "pandas_market_calendars", "tqdm"]
+dev = ["black", "ruff", "pre-commit"]
+
 [project.scripts]
 ivol-fetch = "fetch_ivol_by_list:main"
+poly-fetch = "fetch_polygon_flatfiles:main"  # <- add this
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["fetch_ivol_by_list", "paths", "ledger"]
+py-modules = ["fetch_ivol_by_list", "fetch_polygon_flatfiles", "paths", "ledger"]

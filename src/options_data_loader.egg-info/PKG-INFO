@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: options-data-loader
+Version: 0.1.0
+Requires-Python: >=3.10
+Requires-Dist: pandas
+Requires-Dist: ivolatility
+Requires-Dist: python-dotenv
+Requires-Dist: pyarrow
+Provides-Extra: polygon
+Requires-Dist: boto3; extra == "polygon"
+Requires-Dist: pandas_market_calendars; extra == "polygon"
+Requires-Dist: tqdm; extra == "polygon"
+Provides-Extra: dev
+Requires-Dist: black; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: pre-commit; extra == "dev"

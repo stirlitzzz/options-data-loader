@@ -1,0 +1,20 @@
+. .venv/bin/activate
+for Y in $(seq 2005 2025); do
+  S="${Y}-01-01"; E="${Y}-12-31"
+  echo ">>> ${S}..${E}"
+done
+
+
+
+# inside tmux
+. .venv/bin/activate
+for Y in $(seq 2006 2025); do
+  S="${Y}-01-01"; E="${Y}-12-31"
+  echo ">>> YEAR $Y $(date -Is)"
+  stdbuf -oL python src/fetch_ivol_by_list.py tickers.csv \
+    --start "$S" --end "$E" --dte 0 520 --delta 0.20 0.80 \
+    --chunk-days 31 --sleep 0.6 --fmt parquet \
+    2>&1 | tee -a "$IVOL_DATA_DIR/logs/run_${Y}.log"
+  echo "<<< YEAR $Y done $(date -Is)"
+done
+# press Ctrl-b then d to detach

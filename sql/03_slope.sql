@@ -24,5 +24,5 @@ SELECT
   stocks_id, c_date, expiration_date,
   (sxy - sx*sy/sw) / NULLIF((sxx - (sx*sx)/sw),0) AS slope
 FROM agg
-) TO '$IVOL_DATA_DIR/curated/smile_slopei${YEAR_SUFFIX}.parquet'
+) TO '$IVOL_DATA_DIR/curated/smile_slope${YEAR_SUFFIX}.parquet'
 (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 128000000);
