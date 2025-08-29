@@ -59,7 +59,7 @@ def rv_daily_for_file(path: str, ks=(1, 5, 15, 30)) -> pl.DataFrame:
             .group_by(["symbol", "t_bucket"])
             .agg(
                 [
-                    pl.col("close").last().alias("close_k"),
+                    pl.col("close").sort_by(pl.col("ts_ny")).last().alias("close_k"),
                     pl.col("ts_ny").dt.date().first().alias("trade_date"),
                 ]
             )
@@ -74,13 +74,17 @@ def rv_daily_for_file(path: str, ks=(1, 5, 15, 30)) -> pl.DataFrame:
                 [
                     pl.len().alias("n_buckets"),
                     pl.col("r").count().alias("n_ret"),
-                    (pl.col("r") ** 2).sum().alias("rv"),
+                    (pl.col("r") ** 2).mean().alias("rv"),
                 ]
             )
             .with_columns(
                 [
                     pl.col("rv").sqrt().alias("sigma_daily"),
-                    (pl.col("rv").sqrt() * math.sqrt(252.0)).alias("sigma_annualized"),
+                    (pl.col("rv").sqrt() * math.sqrt(252.0 * 24.0 * 60.0 / K)).alias(
+                        "sigma_annualized"
+                    ),
+                    # ( (pl.col("rv") / pl.col("n_ret")) ).sqrt().alias("sigma_daily_std"),
+                    # ( (pl.col("rv") / pl.col("n_ret")).sqrt() * math.sqrt(252.0)).alias("sigma_daily_anualized"),
                     pl.lit(K).alias("K"),
                 ]
             )
