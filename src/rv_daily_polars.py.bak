@@ -49,22 +49,13 @@ def rv_daily_for_file(path: str, ks=(1, 5, 15, 30)) -> pl.DataFrame:
             ]
         )
         # RTH filter with TIME literals
-        .filter(pl.col("ts_ny").dt.time().is_between(pl.time(9, 29), pl.time(15, 59)))
+        .filter(pl.col("ts_ny").dt.time().is_between(pl.time(9, 30), pl.time(16, 0)))
     )
 
     outs = []
-    ANCHOR = pl.duration(minutes=29)
     for K in ks:
-        t_bucket = (
-            (
-                pl.col("ts_ny") - ANCHOR
-            ).dt.truncate(  # shift so 09:29 becomes a “00” boundary
-                f"{K}m"
-            )  # floor to K-min grid
-            + ANCHOR  # shift back → buckets start at 09:29 + n*K
-        ).alias("t_bucket")
         out = (
-            lf.with_columns([t_bucket])
+            lf.with_columns(pl.col("ts_ny").dt.truncate(f"{K}m").alias("t_bucket"))
             .group_by(["symbol", "t_bucket"])
             .agg(
                 [
@@ -89,11 +80,9 @@ def rv_daily_for_file(path: str, ks=(1, 5, 15, 30)) -> pl.DataFrame:
             .with_columns(
                 [
                     pl.col("rv").sqrt().alias("sigma_daily"),
-                    (pl.col("rv").sqrt() * math.sqrt(252.0 * 24.0 * 60.0 / K)).alias(
-                        "sigma_annualized"
-                    ),
-                    # ( (pl.col("rv") / pl.col("n_ret")) ).sqrt().alias("sigma_daily_std"),
-                    # ( (pl.col("rv") / pl.col("n_ret")).sqrt() * math.sqrt(252.0)).alias("sigma_daily_anualized"),
+                    (pl.col("rv").sqrt() * math.sqrt(252.0*24.0*60.0/K)).alias("sigma_annualized"),
+                    #( (pl.col("rv") / pl.col("n_ret")) ).sqrt().alias("sigma_daily_std"),
+                    #( (pl.col("rv") / pl.col("n_ret")).sqrt() * math.sqrt(252.0)).alias("sigma_daily_anualized"),
                     pl.lit(K).alias("K"),
                 ]
             )
