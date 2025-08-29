@@ -1,53 +1,99 @@
-# rv_daily_polars.py
-import polars as pl
 import math
 import sys
+import polars as pl
+
+# sane range in MILLISECONDS: 2000-01-01 .. 2100-01-01
+MS_MIN = 946_684_800_000
+MS_MAX = 4_102_444_800_000
 
 
-def rv_daily_for_file(path, ks=(1, 5, 15, 30)):
+def rv_daily_for_file(path: str, ks=(1, 5, 15, 30)) -> pl.DataFrame:
+    ws = pl.col("window_start").cast(pl.Int64)
+
+    # Normalize epoch to MILLISECONDS (handles sec/ms/µs/ns)
+    ws_ms = (
+        pl.when((ws >= 1_000_000_000) & (ws <= 9_999_999_999))  # seconds
+        .then(ws * 1_000)
+        .when((ws >= 1_000_000_000_000) & (ws <= 9_999_999_999_999))  # ms
+        .then(ws)
+        .when((ws >= 1_000_000_000_000_000) & (ws <= 9_999_999_999_999_999))  # µs
+        .then(ws // 1_000)
+        .when(
+            (ws >= 1_000_000_000_000_000_000) & (ws <= 9_999_999_999_999_999_999)
+        )  # ns
+        .then(ws // 1_000_000)
+        .otherwise(None)
+        .alias("ws_ms")
+    )
+
     lf = (
         pl.scan_parquet(path)
         .select(
             pl.col("ticker").str.to_uppercase().alias("symbol"),
-            pl.col("close").cast(pl.Float64),
-            pl.col("window_start").cast(pl.Int64),  # epoch ms
+            pl.col("close").cast(pl.Float64).alias("close"),
+            pl.col("window_start").cast(pl.Int64),
+        )
+        .with_columns(ws_ms)
+        .filter(
+            pl.col("ws_ms").is_not_null()
+            & (pl.col("ws_ms") >= MS_MIN)
+            & (pl.col("ws_ms") <= MS_MAX)
         )
         .with_columns(
-            ts_utc=(pl.col("window_start"))
-            .cast(pl.Datetime("ms"))
-            .dt.replace_time_zone("UTC"),
-            ts_ny=pl.col("ts_utc").dt.convert_time_zone("America/New_York"),
+            [
+                pl.col("ws_ms").cast(pl.Datetime("ms", "UTC")).alias("ts_utc"),
+                pl.col("ws_ms")
+                .cast(pl.Datetime("ms", "UTC"))
+                .dt.convert_time_zone("America/New_York")
+                .alias("ts_ny"),
+            ]
         )
-        .filter(pl.col("ts_ny").dt.strftime("%H:%M").is_between("09:30", "16:00"))
+        # RTH filter with TIME literals
+        .filter(pl.col("ts_ny").dt.time().is_between(pl.time(9, 30), pl.time(16, 0)))
     )
 
     outs = []
     for K in ks:
         out = (
-            lf.with_columns(t_bucket=pl.col("ts_ny").dt.truncate(f"{K}m"))
+            lf.with_columns(pl.col("ts_ny").dt.truncate(f"{K}m").alias("t_bucket"))
             .group_by(["symbol", "t_bucket"])
             .agg(
-                close_k=pl.col("close").last(),
-                trade_date=pl.col("ts_ny").dt.date().first(),
+                [
+                    pl.col("close").last().alias("close_k"),
+                    pl.col("ts_ny").dt.date().first().alias("trade_date"),
+                ]
             )
-            .sort(["symbol", "t_bucket"])
-            .with_columns(r=(pl.col("close_k") / pl.col("close_k").shift(1)).log())
+            .sort(["symbol", "trade_date", "t_bucket"])
+            .with_columns(
+                ((pl.col("close_k") / pl.col("close_k").shift(1)).log())
+                .over(["symbol", "trade_date"])
+                .alias("r")
+            )
             .group_by(["symbol", "trade_date"])
             .agg(
-                n_buckets=pl.count(),
-                n_ret=pl.col("r").count(),
-                rv=pl.col("r").pow(2).sum(),
+                [
+                    pl.len().alias("n_buckets"),
+                    pl.col("r").count().alias("n_ret"),
+                    (pl.col("r") ** 2).sum().alias("rv"),
+                ]
             )
             .with_columns(
-                sigma_daily=pl.col("rv").sqrt(),
-                sigma_annualized=pl.col("rv").sqrt() * math.sqrt(252.0),
-                K=pl.lit(K),
+                [
+                    pl.col("rv").sqrt().alias("sigma_daily"),
+                    (pl.col("rv").sqrt() * math.sqrt(252.0)).alias("sigma_annualized"),
+                    pl.lit(K).alias("K"),
+                ]
             )
         )
         outs.append(out)
-    return pl.concat(outs).collect()
+
+    # use streaming engine (new style)
+    return pl.concat(outs).collect(engine="streaming")
 
 
 if __name__ == "__main__":
-    df = rv_daily_for_file(sys.argv[1])  # path to one daily parquet
-    df.write_parquet(sys.argv[2])
+    src = sys.argv[1]
+    dst = sys.argv[2] if len(sys.argv) > 2 else src.replace(".parquet", "_rv.parquet")
+    df = rv_daily_for_file(src)
+    df.write_parquet(dst)
+    print(df.shape, "->", dst)
