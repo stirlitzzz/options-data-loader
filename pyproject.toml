@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 name = "options-data-loader"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = ["pandas", "ivolatility", "python-dotenv", "pyarrow"]
+dependencies = ["pandas", "ivolatility", "python-dotenv", "pyarrow","polars"]
 
 # Optional extras you install as:  pip install -e ".[polygon]"
 
