@@ -2,33 +2,38 @@ PRAGMA threads=8;
 
 COPY (
 WITH P AS (SELECT * FROM read_parquet('${DATA_DIR}/curated/pairs${YEAR_SUFFIX}.parquet')),
-ranked AS (
-  SELECT *,
-         CASE WHEN K <= S THEN ROW_NUMBER() OVER (
-                PARTITION BY stocks_id, c_date, expiration_date
-                ORDER BY (S-K) ASC
-              ) END AS rn_below,
-         CASE WHEN K >= S THEN ROW_NUMBER() OVER (
-                PARTITION BY stocks_id, c_date, expiration_date
-                ORDER BY (K-S) ASC
-              ) END AS rn_above
-  FROM P
-),
-chosen AS (
+G AS (
   SELECT
-    b.stocks_id, b.c_date, b.expiration_date,
-    b.K AS K_below, b.ivol_mid AS iv_below,
-    a.K AS K_above, a.ivol_mid AS iv_above,
-    b.S AS S, b.tau AS tau
-  FROM ranked b
-  JOIN ranked a USING (stocks_id, c_date, expiration_date)
-  WHERE b.rn_below = 1 AND a.rn_above = 1 AND a.K >= b.K
+    stocks_id, c_date, expiration_date,
+    any_value(S)   AS S,
+    any_value(tau) AS tau,
+
+    -- nearest strike <= S
+    first(K        ORDER BY K DESC) FILTER (WHERE K <= S) AS K_below,
+    first(ivol_mid ORDER BY K DESC) FILTER (WHERE K <= S) AS iv_below,
+
+    -- nearest strike >= S
+    first(K        ORDER BY K ASC)  FILTER (WHERE K >= S) AS K_above,
+    first(ivol_mid ORDER BY K ASC)  FILTER (WHERE K >= S) AS iv_above,
+
+    -- exact ATM if present
+    min(ivol_mid)  FILTER (WHERE K = S) AS iv_atm
+  FROM P
+  GROUP BY 1,2,3
+),
+H AS (
+  SELECT
+    *,
+    CASE
+      WHEN K_below IS NOT NULL AND K_above IS NOT NULL AND K_above <> K_below
+        THEN iv_below + (iv_above - iv_below) * (S - K_below) / (K_above - K_below)
+    END AS iv_interp
+  FROM G
 )
 SELECT
-  stocks_id, c_date, expiration_date, S, tau,
-  CASE WHEN K_above = K_below THEN (iv_above + iv_below)/2.0
-       ELSE (iv_below * (K_above - S) + iv_above * (S - K_below)) / NULLIF(K_above - K_below,0)
-  END AS iv_atm
-FROM chosen
+  stocks_id, c_date, expiration_date,
+  S, tau, K_below, iv_below, K_above, iv_above,
+  COALESCE(iv_atm, iv_interp, iv_below, iv_above) AS iv_at_spot
+FROM H
 )  TO '${DATA_DIR}/curated/atm${YEAR_SUFFIX}.parquet'
   (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 128000000);

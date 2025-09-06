@@ -53,7 +53,7 @@ scored AS (
   WHERE vega_c > 0 AND vega_p > 0
 )
 SELECT c_date, stocks_id, expiration_date, K, S, dte, tau,
-       delta_c01, iv_c, iv_p, vega_c, vega_p, ivol_mid,
+       delta_c01, iv_c, iv_p, vega_c, vega_p, width_lo, ivol_mid,
        half_spread_norm, x
 FROM scored
 WHERE ivol_mid BETWEEN 0.01 AND 5.00
