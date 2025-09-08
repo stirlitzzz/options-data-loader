@@ -33,7 +33,7 @@ H AS (
 SELECT
   stocks_id, c_date, expiration_date,
   S, tau, K_below, iv_below, K_above, iv_above,
-  COALESCE(iv_atm, iv_interp, iv_below, iv_above) AS iv_at_spot
+  COALESCE(iv_atm, iv_interp, iv_below, iv_above) AS iv_atm
 FROM H
 )  TO '${DATA_DIR}/curated/atm${YEAR_SUFFIX}.parquet'
   (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 128000000);
